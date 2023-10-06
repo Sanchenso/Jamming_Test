@@ -78,4 +78,4 @@ elif iin == 'y':
     else:
         print('repeat a function call')
     print('Working time:', end=' ')
-print(time.time() - start, end=' sec')
+print(time.time() - start, 'sec')
