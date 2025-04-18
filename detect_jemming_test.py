@@ -1,90 +1,238 @@
-import georinex as gr
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime, timedelta
 import os
-import sys
 import subprocess
-from datetime import datetime
-from matplotlib.pyplot import figure, show, savefig
+import sys
+from collections import defaultdict
 
-ax = figure().gca()
+system_map = {
+    'GPS': 'G',
+    'Glonass': 'R',
+    'BeiDou': 'C'
+}
 
-arg = sys.argv[1]  # наименование лога дрона
-arg2 = sys.argv[2]  # значение SNR
-arg3 = sys.argv[3]  # значение кол-ва спутников
 
-if arg[-4:] == ".bin" or arg[-4:] == ".ubx":
-    index = arg.index('.')
-    arg = arg[:index]
+class RinexParser:
+    def __init__(self, filename):
+        self.filename = filename
+        self.data = defaultdict(dict)
+        self.systems = {'G': 'GPS', 'R': 'GLONASS', 'C': 'BeiDou'}
 
-binFile = arg + ".bin"
-ubxFile = arg + ".ubx"
-obsFile = arg + ".obs"
+    def parse(self):
+        with open(self.filename, 'r') as f:
+            lines = f.readlines()
 
-try:
-    subprocess.call("./parser --raw_data " + binFile, shell=True)
-    os.remove(arg + "_channel_lua_125.dat")
-    os.remove(arg + "_channel_passports_124.dat")
-    os.remove(arg + "_channel_telemetry_123.dat")
-    os.remove(arg + "_flight_0.gscl")
-    os.remove(arg + "_flight_0.params")
-except Exception:
-    print(binFile, " are not parsing!")
+        # Skip header
+        for i, line in enumerate(lines):
+            if "END OF HEADER" in line:
+                lines = lines[i + 1:]
+                break
 
-try:
-    os.rename(arg + "_channel_gnss_126.dat", ubxFile)
-except Exception:
-    print("no file 126.dat")
+        current_time = None
+        for line in lines:
+            if line.startswith('>'):
+                parts = line[1:].split()
+                hh, mm, ss = map(float, parts[3:6])
+                current_time = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
+            elif current_time and line.strip():
+                sat = line[:3].strip()  # G01, R02, etc.
+                obs = line[3:]
 
-subprocess.call("convbin " + ubxFile + " -o " + obsFile + " -os -r ubx", shell=True)
-hdr = gr.rinexheader(obsFile)
-# print(hdr.get('fields'))  # вывод типа данных нав. систем
+                try:
+                    s1 = float(obs[32:48].strip())  # L1 SNR
+                    self.data[current_time][f"{sat}_L1"] = s1
+                except:
+                    pass
 
-obsG = gr.load(obsFile, use=['G'])
-obsR = gr.load(obsFile, use=['R'])
+                try:
+                    s2 = float(obs[80:96].strip())  # L2 SNR
+                    self.data[current_time][f"{sat}_L2"] = s2
+                except:
+                    pass
 
-# fullTime = min(obsG['S1C'].time.values.size, obsR['S1C'].time.values.size)  # определение временного диапазона
+    def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None):
+        if target_system and target_band:
+            # Проверяем только указанную систему и диапазон
+            sys_code = system_map.get(target_system, 'G')  # По умолчанию GPS
+            band = f"_{target_band}"
+            systems_to_check = {
+                f"{target_system}_{target_band}": (sys_code, band)
+            }
+            print(
+                f"\nChecking conditions: SNR ≥ {min_snr}, min {min_sats} satellites for {target_system} {target_band} only")
+        else:
+            # Проверяем все системы
+            systems_to_check = {
+                'GPS_L1': ('G', '_L1'),
+                'GPS_L2': ('G', '_L2'),
+                'Glonass_L1': ('R', '_L1'),
+                'Glonass_L2': ('R', '_L2'),
+                'BeiDou_L1': ('C', '_L1'),
+                'BeiDou_L2': ('C', '_L2')
+            }
+            print(f"\nChecking conditions: SNR ≥ {min_snr}, min {min_sats} satellites for all systems/bands")
 
-if obsR['S1C'].time.values.size < obsG['S1C'].time.values.size:
-    b = obsR['S1C'].time.values.size  # определяем длину временного отрезок
-else:
-    b = obsG['S1C'].time.values.size
-print(b)
+        problems = 0
 
-# spisok_name_satG = list((obsG['S1'].sv.values))				# формируем список всех спутников GPS
-# spisok_name_satR = list((obsR['S1'].sv.values))				# формируем список всех спутников GLONASS
-ng = 0
-nr = 0
-l = 0
+        present_systems = set()
+        for sats in self.data.values():
+            for sat_key in sats:
+                sys_code = sat_key[0]
+                band = '_L1' if '_L1' in sat_key else '_L2'
+                present_systems.add(f"{sys_code}{band}")
 
-for j in range(b):  # проверка на кол-во спутников с заданным SNR
-    l += 1
-    for k in obsG['S1C'][j].values:
-        if k > int(arg2):
-            ng += 1
-    for m in obsR['S1C'][j].values:
-        if m > int(arg2):
-            nr += 1
-    if ng < int(arg3) and nr < int(arg3):
-        print('detect')
-        time_jam = str(obsG['S1C'][j].time.values)
-        time_jam_convert = datetime.fromisoformat(time_jam[0:-3])
-        print(datetime.strftime(time_jam_convert, '%H:%M:%S'))
-        # with open('data_jemming_' + arg + '.csv', 'a') as f:
-        with open('data_jemming_all.csv', 'a') as f:
-            f.write(arg)
-            f.write(' ')
-            f.write(str(datetime.strftime(time_jam_convert, '%H:%M:%S')))
-            f.write('\n')
-        f.close()
-    ng = 0
-    nr = 0
+        for time, sats in self.data.items():
+            for system_name, (sys_code, band) in systems_to_check.items():
+                if f"{sys_code}{band}" not in present_systems:
+                    continue
 
-if l < b:  # проверка на потерянные данные
-    print('error -', end=' ')
-    print(b - l, end=' (')
-    print(round(((b - l) * 100) / b), end=' %)')
-# ax.plot(obsG.time, obsG['S1'], label = spisok_name_satG)		# строим графики SNR для всех спутников GPS
-# ax.legend()
-# show()
-# ax.plot(obsR.time, obsR['S1'], label = spisok_name_satR)		# строим графики SNR для всех спутников GLONASS
-# ax.legend()
-# show()
+                count = sum(1 for sat_key in sats
+                            if sat_key.startswith(sys_code)
+                            and sat_key.endswith(band)
+                            and sats[sat_key] >= min_snr)
+
+                if count < min_sats:
+                    print(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})")
+                    problems += 1
+
+        if problems == 0:
+            print("\nLOG OK\n")
+        else:
+            print(f"\nTotal problems: {problems}\n")
+
+    def save_csv(self, output_dir="csv_output"):
+        os.makedirs(output_dir, exist_ok=True)
+
+        for system in self.systems:
+            for band in ['L1', 'L2']:
+                # Prepare data for system, band
+                sys_data = {}
+                for time, sats in self.data.items():
+                    row = {}
+                    for sat, snr in sats.items():
+                        if sat.startswith(system) and sat.endswith(band):
+                            row[sat.split('_')[0]] = int(round(snr))
+                    if row:
+                        sys_data[time] = row
+
+                if not sys_data:
+                    continue
+
+                df = pd.DataFrame.from_dict(sys_data, orient='index')
+                df.index.name = 'Time'
+                df.sort_index(inplace=True)
+
+                csv_file = os.path.join(output_dir, f"{name_file[:-4]}_{self.systems[system]}_{band}.csv")
+                df.to_csv(csv_file, sep=' ')
+                print(f"Saved {csv_file}")
+
+    def plot_snr(self, output_dir="plots", target_system=None, target_band=None):
+        os.makedirs(output_dir, exist_ok=True)
+
+        if target_system and target_band:
+            system_map = {'GPS': 'G', 'Glonass': 'R', 'BeiDou': 'C'}
+            sys_code = system_map.get(target_system, 'G')
+            bands = [f"_{target_band}"]
+            systems = [(sys_code, target_system)]
+            print(f"\nPlotting SNR for {target_system} {target_band} only")
+        else:
+            systems = [('G', 'GPS'), ('R', 'GLONASS'), ('C', 'BeiDou')]
+            bands = ['_L1', '_L2']
+            print("\nPlotting SNR for all systems/bands")
+
+        for sys_code, sys_name in systems:
+            for band_suffix in bands:
+                band = band_suffix[1:]
+                plot_data = {}
+
+                for time_str, sats in self.data.items():
+                    try:
+                        # Обработка времени (исправление 60 секунд)
+                        try:
+                            temp_time = datetime.strptime(time_str, '%H:%M:%S.%f')
+                        except ValueError:
+                            h, m, s = time_str.split(':')
+                            whole_sec, fraction_sec = s.split('.')
+                            if int(whole_sec) == 60:
+                                new_minute = int(m) + 1
+                                new_time_str = f"{h}:{new_minute:02d}:00.{fraction_sec}"
+                                temp_time = datetime.strptime(new_time_str, '%H:%M:%S.%f')
+
+                        # Собираем данные для построения
+                        for sat, snr in sats.items():
+                            if sat.startswith(sys_code) and sat.endswith(band_suffix):
+                                prn = sat.split('_')[0]
+                                if prn not in plot_data:
+                                    plot_data[prn] = {'time': [], 'snr': []}
+                                plot_data[prn]['time'].append(temp_time)
+                                plot_data[prn]['snr'].append(snr)
+
+                    except Exception as e:
+                        print(f"Error processing time {time_str}: {e}")
+                        continue
+
+                if not plot_data:
+                    print(f"No data found for {sys_name} {band}")
+                    continue
+
+                # Создаем график
+                plt.figure(figsize=(12, 6))
+                ax = plt.gca()
+                time_format = mdates.DateFormatter('%H:%M:%S')
+                ax.xaxis.set_major_formatter(time_format)
+
+                for prn, data in sorted(plot_data.items()):
+                    plt.plot(data['time'], data['snr'], '-', label=prn)
+
+                plt.title(f"{sys_name} {band} SNR", fontsize=14)
+                plt.xlabel('Time', fontsize=14)
+                plt.ylabel('SNR, dBHz', fontsize=14)
+                plt.grid(color='black', linestyle='--', linewidth=0.2)
+                plt.ylim(10, 60)
+                plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.tight_layout()
+
+                # Сохраняем график
+                plot_file = os.path.join(output_dir, f"{sys_name}_{band}_SNR.png")
+                plt.savefig(plot_file, dpi=200)
+                plt.show()
+                plt.close()
+                print(f"Saved {plot_file}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 4:
+        print("Usage: python parser.py input.obs min_snr min_sats")
+        sys.exit(1)
+
+    name_file = sys.argv[1]
+    obsFile = name_file[:-4] + '.obs'
+    is_windows = os.name == 'nt'
+    convbin_command = "convbin.exe" if is_windows else "convbin"
+    commandUBX = f"{convbin_command} {name_file} -o {obsFile} -os -r ubx"
+    commandRTCM = f"{convbin_command} {name_file} -o {obsFile} -os -r rtcm3"
+    subprocess.call(commandUBX, shell=True)
+    if not os.path.exists(obsFile):
+        subprocess.call(commandRTCM, shell=True)
+
+    min_snr = float(sys.argv[2])
+    min_sats = int(sys.argv[3])
+    target_system = sys.argv[4] if len(sys.argv) > 4 else None
+    target_band = sys.argv[5] if len(sys.argv) > 5 else None
+    print(len(sys.argv))
+    if len(sys.argv) < 5 or (target_system in system_map and (target_band == 'L1' or target_band == 'L2')):
+        parser = RinexParser(obsFile)
+        parser.parse()
+        parser.save_csv()
+        parser.check_conditions(min_snr, min_sats, target_system, target_band)
+        parser.plot_snr(target_system=target_system, target_band=target_band)
+    else:
+        print('Error name system. Pls choose:')
+        print(' GPS L1')
+        print(' GPS L2')
+        print(' Glonass L1')
+        print(' Glonass L2')
+        print(' BeiDou L1')
+        print(' BeiDou L2')
