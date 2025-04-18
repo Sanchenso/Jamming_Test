@@ -6,12 +6,21 @@ import os
 import subprocess
 import sys
 from collections import defaultdict
+import shutil
 
 system_map = {
     'GPS': 'G',
     'Glonass': 'R',
     'BeiDou': 'C'
 }
+
+name_file = sys.argv[1]
+min_snr = float(sys.argv[2])
+min_sats = int(sys.argv[3])
+target_system = sys.argv[4] if len(sys.argv) > 4 else None
+target_band = sys.argv[5] if len(sys.argv) > 5 else None
+int_name_file, ext_name_file = os.path.splitext(name_file)
+obsFile = int_name_file + '.obs'
 
 
 class RinexParser:
@@ -52,7 +61,7 @@ class RinexParser:
                 except:
                     pass
 
-    def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None):
+    def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=int_name_file):
         if target_system and target_band:
             # Проверяем только указанную систему и диапазон
             sys_code = system_map.get(target_system, 'G')  # По умолчанию GPS
@@ -95,6 +104,9 @@ class RinexParser:
 
                 if count < min_sats:
                     print(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})")
+                    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt') 
+                    with open(txt_file_path, 'a', encoding='utf-8') as file:
+                        file.write(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})\n")                  
                     problems += 1
 
         if problems == 0:
@@ -102,9 +114,8 @@ class RinexParser:
         else:
             print(f"\nTotal problems: {problems}\n")
 
-    def save_csv(self, output_dir="csv_output"):
+    def save_csv(self, output_dir=int_name_file):
         os.makedirs(output_dir, exist_ok=True)
-
         for system in self.systems:
             for band in ['L1', 'L2']:
                 # Prepare data for system, band
@@ -124,13 +135,12 @@ class RinexParser:
                 df.index.name = 'Time'
                 df.sort_index(inplace=True)
 
-                csv_file = os.path.join(output_dir, f"{name_file[:-4]}_{self.systems[system]}_{band}.csv")
+                csv_file = os.path.join(output_dir, f"{int_name_file}_{self.systems[system]}_{band}.csv")
                 df.to_csv(csv_file, sep=' ')
                 print(f"Saved {csv_file}")
 
-    def plot_snr(self, output_dir="plots", target_system=None, target_band=None):
-        os.makedirs(output_dir, exist_ok=True)
-
+    def plot_snr(self, int_name_file, target_system=None, target_band=None):
+        os.makedirs(int_name_file, exist_ok=True)
         if target_system and target_band:
             system_map = {'GPS': 'G', 'Glonass': 'R', 'BeiDou': 'C'}
             sys_code = system_map.get(target_system, 'G')
@@ -195,11 +205,17 @@ class RinexParser:
                 plt.tight_layout()
 
                 # Сохраняем график
-                plot_file = os.path.join(output_dir, f"{sys_name}_{band}_SNR.png")
+                plot_file = os.path.join(int_name_file, f"{sys_name}_{band}_SNR.png")
                 plt.savefig(plot_file, dpi=200)
                 plt.show()
                 plt.close()
                 print(f"Saved {plot_file}")
+    
+    def archive_and_remove_directory(int_name_file, directory_name):
+        archive_name = shutil.make_archive(directory_name, 'zip', directory_name)
+        print(f"Directory archived as: {archive_name}")
+        shutil.rmtree(directory_name)
+        print(f"Directory removed: {directory_name}")
 
 
 if __name__ == "__main__":
@@ -207,8 +223,7 @@ if __name__ == "__main__":
         print("Usage: python parser.py input.obs min_snr min_sats")
         sys.exit(1)
 
-    name_file = sys.argv[1]
-    obsFile = name_file[:-4] + '.obs'
+
     is_windows = os.name == 'nt'
     convbin_command = "convbin.exe" if is_windows else "convbin"
     commandUBX = f"{convbin_command} {name_file} -o {obsFile} -os -r ubx"
@@ -216,18 +231,19 @@ if __name__ == "__main__":
     subprocess.call(commandUBX, shell=True)
     if not os.path.exists(obsFile):
         subprocess.call(commandRTCM, shell=True)
+    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt') 
+    if os.path.exists(txt_file_path):
+        os.remove(txt_file_path)
 
-    min_snr = float(sys.argv[2])
-    min_sats = int(sys.argv[3])
-    target_system = sys.argv[4] if len(sys.argv) > 4 else None
-    target_band = sys.argv[5] if len(sys.argv) > 5 else None
-    print(len(sys.argv))
     if len(sys.argv) < 5 or (target_system in system_map and (target_band == 'L1' or target_band == 'L2')):
         parser = RinexParser(obsFile)
         parser.parse()
-        parser.save_csv()
+        #parser.save_csv()
+        os.makedirs(int_name_file, exist_ok=True)
         parser.check_conditions(min_snr, min_sats, target_system, target_band)
-        parser.plot_snr(target_system=target_system, target_band=target_band)
+        parser.plot_snr(int_name_file, target_system=target_system, target_band=target_band)
+        os.remove(obsFile)
+        parser.archive_and_remove_directory(int_name_file)
     else:
         print('Error name system. Pls choose:')
         print(' GPS L1')
