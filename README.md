@@ -10,9 +10,13 @@ The script must be in the folder with the convbin.exe and the receiver log.
 
 **argument 3** - number of satellites.
 
-**argument 4** (not nessesuary) - name of the System
+**--system** (not nessesuary) - name of the System
 
-**argument 5** (not nessesuary)  -  name of the System ID
+**--band** (not nessesuary)  -  name of the System ID
+
+**--archive** (not nessesuary) - if need to archive folder
+
+**--plot** (not nessesuary) - if need to view the plot
 
 
 
