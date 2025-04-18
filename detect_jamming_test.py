@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections import defaultdict
 import shutil
+import argparse
 
 system_map = {
     'GPS': 'G',
@@ -19,6 +20,7 @@ min_snr = float(sys.argv[2])
 min_sats = int(sys.argv[3])
 target_system = sys.argv[4] if len(sys.argv) > 4 else None
 target_band = sys.argv[5] if len(sys.argv) > 5 else None
+
 int_name_file, ext_name_file = os.path.splitext(name_file)
 obsFile = int_name_file + '.obs'
 
@@ -207,7 +209,8 @@ class RinexParser:
                 # Сохраняем график
                 plot_file = os.path.join(int_name_file, f"{sys_name}_{band}_SNR.png")
                 plt.savefig(plot_file, dpi=200)
-                plt.show()
+                if args.plot:
+                    plt.show()
                 plt.close()
                 print(f"Saved {plot_file}")
 
@@ -218,7 +221,23 @@ class RinexParser:
         print(f"Directory removed: {directory_name}")
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Обработка файла и параметров для скрипта detect_jamming_test.py")
+    
+    # Обязательные аргументы
+    parser.add_argument('name_file', type=str, help="Имя файла для обработки")
+    parser.add_argument('min_snr', type=float, help="Минимальный SNR")
+    parser.add_argument('min_sats', type=int, help="Минимальное количество спутников")
+    parser.add_argument('--system', type=str, help="Целевая система (например, GPS)")
+    parser.add_argument('--band', type=str, help="Целевой диапазон (например, L1)")
+    parser.add_argument('--archive', action='store_true', help="Нужно ли архивировать папку")
+    parser.add_argument('--plot', action='store_true', help="Флаг для указания, нужно ли строить график")
+    args = parser.parse_args()
+    return(args)
+        
+
 if __name__ == "__main__":
+    args = main()
     if len(sys.argv) < 4:
         print("Usage: python parser.py input.obs min_snr min_sats")
         sys.exit(1)
@@ -234,20 +253,22 @@ if __name__ == "__main__":
     if os.path.exists(txt_file_path):
         os.remove(txt_file_path)
 
-    if len(sys.argv) < 5 or (target_system in system_map and (target_band == 'L1' or target_band == 'L2')):
+    #if len(sys.argv) < 5 or (target_system in system_map and (target_band == 'L1' or target_band == 'L2')):
+    if args.system in system_map and (args.band == 'L1' or args.band == 'L2'):   
         parser = RinexParser(obsFile)
         parser.parse()
         # parser.save_csv()
         os.makedirs(int_name_file, exist_ok=True)
-        parser.check_conditions(min_snr, min_sats, target_system, target_band)
-        parser.plot_snr(int_name_file, target_system=target_system, target_band=target_band)
+        parser.check_conditions(min_snr, min_sats, args.system, args.band)
+        parser.plot_snr(int_name_file, target_system=args.system, target_band=args.band)
         os.remove(obsFile)
-        parser.archive_and_remove_directory(int_name_file)
+        if args.archive:
+            parser.archive_and_remove_directory(int_name_file)
     else:
         print('Error name system. Pls choose:')
-        print(' GPS L1')
-        print(' GPS L2')
-        print(' Glonass L1')
-        print(' Glonass L2')
-        print(' BeiDou L1')
-        print(' BeiDou L2')
+        print('--system GPS --band L1')
+        print('--system GPS --band L2')
+        print('--system Glonass --band L1')
+        print('--system Glonass --band L2')
+        print('--system BeiDou --band L1')
+        print('--system BeiDou --band L2')
