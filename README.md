@@ -4,15 +4,15 @@ scanning logs GNSS for jamming detection
 On windows need to use use the convbin version b34f [https://github.com/geospace-code/georinex/releases](https://github.com/rtklibexplorer/RTKLIB/releases/tag/b34f)
 The script must be in the folder with the convbin.exe and the receiver log.
 
-argument 1 - number of drone;
+**argument 1** - number of drone;
 
-argument 2 - min SNR (dBHz);
+**argument 2** - min SNR (dBHz);
 
-argument 3 - number of satellites.
+**argument 3** - number of satellites.
 
-argument 4 (not nessesuary) - name of System
+**argument 4** (not nessesuary) - name of System
 
-argument 5 (not nessesuary)  -  name of System ID
+**argument 5** (not nessesuary)  -  name of System ID
 
 
 
