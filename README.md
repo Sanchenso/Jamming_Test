@@ -16,7 +16,7 @@ The script must be in the folder with the convbin.exe and the receiver log.
 
 
 
-If the number of sattelites is less then 'argument 3' with the selected SNR 'argument 2' in each of the navigation systems (GPS or GLONASS) in the drone log (argument 1), print "detect" and create a text file with the time of jamming detection.
+If the number of sattelites is less then 'argument 3' with the selected SNR 'argument 2' in each of the navigation systems (GPS, GLONASS, BeiDou) in the drone log (argument 1), print "warning" and create a text file with the time of problem.
 
 example of using linux:
 python3 detect_jemming_test.py test_ZED_F9.ubx 25 3
