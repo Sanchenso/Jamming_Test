@@ -104,9 +104,9 @@ class RinexParser:
 
                 if count < min_sats:
                     print(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})")
-                    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt') 
+                    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt')
                     with open(txt_file_path, 'a', encoding='utf-8') as file:
-                        file.write(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})\n")                  
+                        file.write(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})\n")
                     problems += 1
 
         if problems == 0:
@@ -210,7 +210,7 @@ class RinexParser:
                 plt.show()
                 plt.close()
                 print(f"Saved {plot_file}")
-    
+
     def archive_and_remove_directory(int_name_file, directory_name):
         archive_name = shutil.make_archive(directory_name, 'zip', directory_name)
         print(f"Directory archived as: {archive_name}")
@@ -223,7 +223,6 @@ if __name__ == "__main__":
         print("Usage: python parser.py input.obs min_snr min_sats")
         sys.exit(1)
 
-
     is_windows = os.name == 'nt'
     convbin_command = "convbin.exe" if is_windows else "convbin"
     commandUBX = f"{convbin_command} {name_file} -o {obsFile} -os -r ubx"
@@ -231,14 +230,14 @@ if __name__ == "__main__":
     subprocess.call(commandUBX, shell=True)
     if not os.path.exists(obsFile):
         subprocess.call(commandRTCM, shell=True)
-    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt') 
+    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt')
     if os.path.exists(txt_file_path):
         os.remove(txt_file_path)
 
     if len(sys.argv) < 5 or (target_system in system_map and (target_band == 'L1' or target_band == 'L2')):
         parser = RinexParser(obsFile)
         parser.parse()
-        #parser.save_csv()
+        # parser.save_csv()
         os.makedirs(int_name_file, exist_ok=True)
         parser.check_conditions(min_snr, min_sats, target_system, target_band)
         parser.plot_snr(int_name_file, target_system=target_system, target_band=target_band)
