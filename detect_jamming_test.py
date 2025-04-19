@@ -1,4 +1,3 @@
-import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
@@ -14,16 +13,6 @@ system_map = {
     'Glonass': 'R',
     'BeiDou': 'C'
 }
-
-name_file = sys.argv[1]
-min_snr = float(sys.argv[2])
-min_sats = int(sys.argv[3])
-target_system = sys.argv[4] if len(sys.argv) > 4 else None
-target_band = sys.argv[5] if len(sys.argv) > 5 else None
-
-int_name_file, ext_name_file = os.path.splitext(name_file)
-obsFile = int_name_file + '.obs'
-
 
 class RinexParser:
     def __init__(self, filename):
@@ -48,7 +37,7 @@ class RinexParser:
                 hh, mm, ss = map(float, parts[3:6])
                 current_time = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
             elif current_time and line.strip():
-                sat = line[:3].strip()  # G01, R02, etc.
+                sat = line[:3].strip()
                 obs = line[3:]
 
                 try:
@@ -63,18 +52,15 @@ class RinexParser:
                 except:
                     pass
 
-    def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=int_name_file):
+    def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=None):
         if target_system and target_band:
-            # Проверяем только указанную систему и диапазон
-            sys_code = system_map.get(target_system, 'G')  # По умолчанию GPS
+            sys_code = system_map.get(target_system, 'G')
             band = f"_{target_band}"
             systems_to_check = {
                 f"{target_system}_{target_band}": (sys_code, band)
             }
-            print(
-                f"\nChecking conditions: SNR ≥ {min_snr}, min {min_sats} satellites for {target_system} {target_band} only")
+            print(f"\nChecking conditions: SNR ≥ {min_snr}, min {min_sats} satellites for {target_system} {target_band} only")
         else:
-            # Проверяем все системы
             systems_to_check = {
                 'GPS_L1': ('G', '_L1'),
                 'GPS_L2': ('G', '_L2'),
@@ -86,8 +72,8 @@ class RinexParser:
             print(f"\nChecking conditions: SNR ≥ {min_snr}, min {min_sats} satellites for all systems/bands")
 
         problems = 0
-
         present_systems = set()
+
         for sats in self.data.values():
             for sat_key in sats:
                 sys_code = sat_key[0]
@@ -106,7 +92,7 @@ class RinexParser:
 
                 if count < min_sats:
                     print(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})")
-                    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt')
+                    txt_file_path = os.path.join(output_dir, f'{os.path.splitext(os.path.basename(self.filename))[0]}.txt')
                     with open(txt_file_path, 'a', encoding='utf-8') as file:
                         file.write(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})\n")
                     problems += 1
@@ -116,35 +102,65 @@ class RinexParser:
         else:
             print(f"\nTotal problems: {problems}\n")
 
-    def save_csv(self, output_dir=int_name_file):
+    def calculate_average_snr(self, output_dir=None):
+        stats = defaultdict(lambda: {'snr_sum': 0, 'snr_count': 0, 'sat_counts': []})
+        
+        for time, sats in self.data.items():
+            temp_counts = defaultdict(int)
+            
+            for sat_key in sats:
+                sys_code = sat_key[0]
+                band = '_L1' if '_L1' in sat_key else '_L2'
+                key = f"{sys_code}{band}"
+                temp_counts[key] += 1
+                
+            for key, count in temp_counts.items():
+                stats[key]['sat_counts'].append(count)
+            
+            for sat_key, snr in sats.items():
+                sys_code = sat_key[0]
+                band = '_L1' if '_L1' in sat_key else '_L2'
+                key = f"{sys_code}{band}"
+                
+                if snr > 0:
+                    stats[key]['snr_sum'] += snr
+                    stats[key]['snr_count'] += 1
+
+        result = {}
+        for key, data in stats.items():
+            avg_snr = data['snr_sum'] / data['snr_count'] if data['snr_count'] > 0 else 0
+            avg_sats = sum(data['sat_counts']) / len(data['sat_counts']) if data['sat_counts'] else 0
+            
+            result[key] = {
+                'avg_snr': avg_snr,
+                'avg_sats': avg_sats
+            }
+
+        if output_dir:
+            txt_file_path = os.path.join(output_dir, f'{os.path.splitext(os.path.basename(self.filename))[0]}_average_snr.txt')
+            with open(txt_file_path, 'w', encoding='utf-8') as file:
+                file.write("System Avg_SNR_dBHz Avg_Sat\n")    
+                for key, values in sorted(result.items()):
+                    sys_code = key[0]
+                    band = key[1:]
+                    system_name = self.systems.get(sys_code, 'Unknown')
+                    file.write(f"{system_name}_{band} {round(values['avg_snr'],1)} {round(values['avg_sats'])}\n")    
+
+        print("\nAverage statistics for each system:")
+        print("System  Avg SNR (dBHz)  Avg Satellites")
+        print("-------------------------------------")
+        for key, values in sorted(result.items()):
+            print(f"{key:<7} {values['avg_snr']:>12.2f} {values['avg_sats']:>15.2f}")
+
+        return result
+
+    def plot_snr(self, output_dir=None, target_system=None, target_band=None):
+        if not output_dir:
+            output_dir = os.path.splitext(os.path.basename(self.filename))[0]
+            
         os.makedirs(output_dir, exist_ok=True)
-        for system in self.systems:
-            for band in ['L1', 'L2']:
-                # Prepare data for system, band
-                sys_data = {}
-                for time, sats in self.data.items():
-                    row = {}
-                    for sat, snr in sats.items():
-                        if sat.startswith(system) and sat.endswith(band):
-                            row[sat.split('_')[0]] = int(round(snr))
-                    if row:
-                        sys_data[time] = row
-
-                if not sys_data:
-                    continue
-
-                df = pd.DataFrame.from_dict(sys_data, orient='index')
-                df.index.name = 'Time'
-                df.sort_index(inplace=True)
-
-                csv_file = os.path.join(output_dir, f"{int_name_file}_{self.systems[system]}_{band}.csv")
-                df.to_csv(csv_file, sep=' ')
-                print(f"Saved {csv_file}")
-
-    def plot_snr(self, int_name_file, target_system=None, target_band=None):
-        os.makedirs(int_name_file, exist_ok=True)
+        
         if target_system and target_band:
-            system_map = {'GPS': 'G', 'Glonass': 'R', 'BeiDou': 'C'}
             sys_code = system_map.get(target_system, 'G')
             bands = [f"_{target_band}"]
             systems = [(sys_code, target_system)]
@@ -161,7 +177,6 @@ class RinexParser:
 
                 for time_str, sats in self.data.items():
                     try:
-                        # Обработка времени (исправление 60 секунд)
                         try:
                             temp_time = datetime.strptime(time_str, '%H:%M:%S.%f')
                         except ValueError:
@@ -172,7 +187,6 @@ class RinexParser:
                                 new_time_str = f"{h}:{new_minute:02d}:00.{fraction_sec}"
                                 temp_time = datetime.strptime(new_time_str, '%H:%M:%S.%f')
 
-                        # Собираем данные для построения
                         for sat, snr in sats.items():
                             if sat.startswith(sys_code) and sat.endswith(band_suffix):
                                 prn = sat.split('_')[0]
@@ -189,7 +203,6 @@ class RinexParser:
                     print(f"No data found for {sys_name} {band}")
                     continue
 
-                # Создаем график
                 plt.figure(figsize=(12, 6))
                 ax = plt.gca()
                 time_format = mdates.DateFormatter('%H:%M:%S')
@@ -206,69 +219,72 @@ class RinexParser:
                 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
                 plt.tight_layout()
 
-                # Сохраняем график
-                plot_file = os.path.join(int_name_file, f"{sys_name}_{band}_SNR.png")
+                base_name = os.path.splitext(os.path.basename(self.filename))[0]
+                plot_file = os.path.join(output_dir, f"{sys_name}_{band}_SNR.png")
                 plt.savefig(plot_file, dpi=200)
                 if args.plot:
                     plt.show()
                 plt.close()
                 print(f"Saved {plot_file}")
 
-    def archive_and_remove_directory(int_name_file, directory_name):
+    @staticmethod
+    def archive_and_remove_directory(directory_name):
         archive_name = shutil.make_archive(directory_name, 'zip', directory_name)
         print(f"Directory archived as: {archive_name}")
         shutil.rmtree(directory_name)
         print(f"Directory removed: {directory_name}")
 
-
 def main():
     parser = argparse.ArgumentParser(description="Обработка файла и параметров для скрипта detect_jamming_test.py")
     
-    # Обязательные аргументы
     parser.add_argument('name_file', type=str, help="Имя файла для обработки")
     parser.add_argument('min_snr', type=float, help="Минимальный SNR")
     parser.add_argument('min_sats', type=int, help="Минимальное количество спутников")
-    parser.add_argument('--system', type=str, help="Целевая система (например, GPS)")
-    parser.add_argument('--band', type=str, help="Целевой диапазон (например, L1)")
+    parser.add_argument('--system', type=str, help="Целевая система (например, GPS)", default=None)
+    parser.add_argument('--band', type=str, help="Целевой диапазон (например, L1)", default=None)
     parser.add_argument('--archive', action='store_true', help="Нужно ли архивировать папку")
     parser.add_argument('--plot', action='store_true', help="Флаг для указания, нужно ли строить график")
-    args = parser.parse_args()
-    return(args)
-        
+    
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    args = main()
-    if len(sys.argv) < 4:
-        print("Usage: python parser.py input.obs min_snr min_sats")
+    if len(sys.argv) < 3:
+        print("Usage: python detect_jamming_test.py input_file min_snr min_sats [--system SYSTEM] [--band BAND] [--archive] [--plot]")
+        print("Example: python3 detect_jamming_test.py test_tau1312.cyno 30 5")
         sys.exit(1)
-
+    
+    # Parse arguments
+    args = main()
+    
+    int_name_file = os.path.splitext(args.name_file)[0]
+    obs_file = f"{int_name_file}.obs"
+    
     is_windows = os.name == 'nt'
     convbin_command = "convbin.exe" if is_windows else "convbin"
-    commandUBX = f"{convbin_command} {name_file} -o {obsFile} -os -r ubx"
-    commandRTCM = f"{convbin_command} {name_file} -o {obsFile} -os -r rtcm3"
-    subprocess.call(commandUBX, shell=True)
-    if not os.path.exists(obsFile):
-        subprocess.call(commandRTCM, shell=True)
+    
+    subprocess.call(f"{convbin_command} {args.name_file} -o {obs_file} -os -r ubx", shell=True)
+    if not os.path.exists(obs_file):
+        subprocess.call(f"{convbin_command} {args.name_file} -o {obs_file} -os -r rtcm3", shell=True)
+
+    os.makedirs(int_name_file, exist_ok=True)
+
+    # Clear existing txt file
     txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt')
+    txt2_file_path = os.path.join(int_name_file, f'{int_name_file}_average_snr.txt')
     if os.path.exists(txt_file_path):
         os.remove(txt_file_path)
+    if os.path.exists(txt2_file_path):
+        os.remove(txt2_file_path)
 
-    #if len(sys.argv) < 5 or (target_system in system_map and (target_band == 'L1' or target_band == 'L2')):
-    if args.system in system_map and (args.band == 'L1' or args.band == 'L2'):   
-        parser = RinexParser(obsFile)
-        parser.parse()
-        # parser.save_csv()
-        os.makedirs(int_name_file, exist_ok=True)
-        parser.check_conditions(min_snr, min_sats, args.system, args.band)
-        parser.plot_snr(int_name_file, target_system=args.system, target_band=args.band)
-        os.remove(obsFile)
-        if args.archive:
-            parser.archive_and_remove_directory(int_name_file)
-    else:
-        print('Error name system. Pls choose:')
-        print('--system GPS --band L1')
-        print('--system GPS --band L2')
-        print('--system Glonass --band L1')
-        print('--system Glonass --band L2')
-        print('--system BeiDou --band L1')
-        print('--system BeiDou --band L2')
+    parser = RinexParser(obs_file)
+    parser.parse()    
+    parser.check_conditions(args.min_snr, args.min_sats, args.system, args.band, int_name_file)
+    parser.calculate_average_snr(int_name_file)
+    parser.plot_snr(int_name_file, target_system=args.system, target_band=args.band)
+    
+    # Clear obs file
+    if os.path.exists(obs_file):
+        os.remove(obs_file)
+        
+    if args.archive:
+        RinexParser.archive_and_remove_directory(int_name_file)
