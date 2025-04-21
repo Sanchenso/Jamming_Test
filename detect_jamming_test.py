@@ -161,7 +161,7 @@ class RinexParser:
         print("System  Avg SNR (dBHz)  Avg Satellites")
         print("-------------------------------------")
         for key, values in sorted(result.items()):
-            print(f"{key:<7} {values['avg_snr']:>12.2f} {values['avg_sats']:>15.2f}")
+            print(f"{key:<7} {values['avg_snr']:>12.1f} {values['avg_sats']:>15.0f}")
 
         return result
 
