@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import subprocess
 import sys
@@ -20,37 +20,48 @@ class RinexParser:
         self.data = defaultdict(dict)
         self.systems = {'G': 'GPS', 'R': 'GLONASS', 'C': 'BeiDou'}
 
-    def parse(self):
+    def parse(self, start_delay=None):
         with open(self.filename, 'r') as f:
             lines = f.readlines()
-
+        
         # Skip header
         for i, line in enumerate(lines):
             if "END OF HEADER" in line:
                 lines = lines[i + 1:]
                 break
-
+        
         current_time = None
+        start_time = None
+        first_epoch_processed = False
+        
         for line in lines:
             if line.startswith('>'):
                 parts = line[1:].split()
                 hh, mm, ss = map(float, parts[3:6])
                 current_time = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
+                
+                # Инициализируем start_time только при первом чтении эпохи, если указан start_delay
+                if not first_epoch_processed and start_delay is not None:
+                    start_time = datetime.strptime(current_time, "%H:%M:%S.%f") + timedelta(seconds=start_delay)
+                    first_epoch_processed = True
+            
             elif current_time and line.strip():
-                sat = line[:3].strip()
-                obs = line[3:]
+                # Если start_delay не указан или текущее время превышает start_time
+                if start_time is None or datetime.strptime(current_time, "%H:%M:%S.%f") >= start_time:
+                    sat = line[:3].strip()
+                    obs = line[3:]
+                    
+                    try:
+                        s1 = float(obs[32:48].strip())  # L1 SNR
+                        self.data[current_time][f"{sat}_L1"] = s1
+                    except ValueError:
+                        pass
 
-                try:
-                    s1 = float(obs[32:48].strip())  # L1 SNR
-                    self.data[current_time][f"{sat}_L1"] = s1
-                except:
-                    pass
-
-                try:
-                    s2 = float(obs[80:96].strip())  # L2 SNR
-                    self.data[current_time][f"{sat}_L2"] = s2
-                except:
-                    pass
+                    try:
+                        s2 = float(obs[80:96].strip())  # L2 SNR
+                        self.data[current_time][f"{sat}_L2"] = s2
+                    except ValueError:
+                        pass
 
     def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=None):
         if target_system and target_band:
@@ -79,8 +90,8 @@ class RinexParser:
                 sys_code = sat_key[0]
                 band = '_L1' if '_L1' in sat_key else '_L2'
                 present_systems.add(f"{sys_code}{band}")
-
         for time, sats in self.data.items():
+
             for system_name, (sys_code, band) in systems_to_check.items():
                 if f"{sys_code}{band}" not in present_systems:
                     continue
@@ -244,12 +255,14 @@ def main():
     parser.add_argument('--band', type=str, help="Целевой диапазон (например, L1)", default=None)
     parser.add_argument('--archive', action='store_true', help="Нужно ли архивировать папку")
     parser.add_argument('--plot', action='store_true', help="Флаг для указания, нужно ли строить график")
+    parser.add_argument('--start_delay', type=int, help="Время задержки начала обработки, сек", default=None)
+
     
     return parser.parse_args()
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python detect_jamming_test.py input_file min_snr min_sats [--system SYSTEM] [--band BAND] [--archive] [--plot]")
+        print("Usage: python detect_jamming_test.py input_file min_snr min_sats [--system SYSTEM] [--band BAND] [--archive] [--plot] [--start_delay]")
         print("Example: python3 detect_jamming_test.py test_tau1312.cyno 30 5")
         sys.exit(1)
     
@@ -277,7 +290,7 @@ if __name__ == "__main__":
         os.remove(txt2_file_path)
 
     parser = RinexParser(obs_file)
-    parser.parse()    
+    parser.parse(args.start_delay)    
     parser.check_conditions(args.min_snr, args.min_sats, args.system, args.band, int_name_file)
     parser.calculate_average_snr(int_name_file)
     parser.plot_snr(int_name_file, target_system=args.system, target_band=args.band)
