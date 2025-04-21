@@ -14,6 +14,7 @@ Optional Arguments:
 - --band (not necessary) - band identifier of the system (e.g., L1).
 - --archive (not necessary) - if specified, archives the folder.
 - --plot (not necessary) - if specified, shows the plot.
+- --start_delay - delay time for start of processing, sec (e.g., 30)
 
 Functionality:
 
