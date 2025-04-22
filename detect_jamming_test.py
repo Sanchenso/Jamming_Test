@@ -334,6 +334,7 @@ if __name__ == "__main__":
     # Clear obs file
     if os.path.exists(obs_file):
         os.remove(obs_file)
+        shutil.move(args.name_file, int_name_file)
         
     if args.archive:
         RinexParser.archive_and_remove_directory(int_name_file)
