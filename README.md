@@ -15,6 +15,8 @@ Optional Arguments:
 - --archive - if specified, archives the folder.
 - --plot - if specified, shows the plot.
 - --start_delay - delay time for start of processing, sec (e.g., 30)
+- --stop_delay  - delay time for stop of processing, sec (e.g., 30)
+- --time - time of processing, onsidering start and stop delay, sec (e.g., 30)
 
 Functionality:
 
@@ -29,4 +31,5 @@ Usage Examples:
 For *log test_NEO_M8.ubx*, a minimum of 5 satellites (either GPS or GLONASS) with an SNR of 30 dBHz and above is required.
 
 To specify only one system, for example, GPS L1, and to show the plot and archive:
-```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --archive --start_delay 30```
+```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --archive --start_delay 30 --stop_delay 30 --time 30```
+
