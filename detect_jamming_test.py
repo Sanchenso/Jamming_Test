@@ -14,54 +14,87 @@ system_map = {
     'BeiDou': 'C'
 }
 
+
 class RinexParser:
     def __init__(self, filename):
         self.filename = filename
         self.data = defaultdict(dict)
         self.systems = {'G': 'GPS', 'R': 'GLONASS', 'C': 'BeiDou'}
 
-    def parse(self, start_delay=None):
+    def parse(self, start_delay=None, stop_delay=None, time=None):
         with open(self.filename, 'r') as f:
             lines = f.readlines()
-        
+
         # Skip header
         for i, line in enumerate(lines):
             if "END OF HEADER" in line:
                 lines = lines[i + 1:]
                 break
-        
+
         current_time = None
         start_time = None
-        first_epoch_processed = False
-        
+        end_time = None
+        first_epoch_time = None
+        last_epoch_time = None
+
+        # Сначала проходим по файлу, чтобы определить первый и последний временные метки
         for line in lines:
             if line.startswith('>'):
                 parts = line[1:].split()
                 hh, mm, ss = map(float, parts[3:6])
-                current_time = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
-                
-                # Инициализируем start_time только при первом чтении эпохи, если указан start_delay
-                if not first_epoch_processed and start_delay is not None:
-                    start_time = datetime.strptime(current_time, "%H:%M:%S.%f") + timedelta(seconds=start_delay)
-                    first_epoch_processed = True
-            
-            elif current_time and line.strip():
-                # Если start_delay не указан или текущее время превышает start_time
-                if start_time is None or datetime.strptime(current_time, "%H:%M:%S.%f") >= start_time:
-                    sat = line[:3].strip()
-                    obs = line[3:]
-                    
-                    try:
-                        s1 = float(obs[32:48].strip())  # L1 SNR
-                        self.data[current_time][f"{sat}_L1"] = s1
-                    except ValueError:
-                        pass
+                time_str = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
+                if first_epoch_time is None:
+                    first_epoch_time = datetime.strptime(time_str, "%H:%M:%S.%f")
+                last_epoch_time = datetime.strptime(time_str, "%H:%M:%S.%f")
 
-                    try:
-                        s2 = float(obs[80:96].strip())  # L2 SNR
-                        self.data[current_time][f"{sat}_L2"] = s2
-                    except ValueError:
-                        pass
+        # Устанавливаем границы обработки
+        if start_delay is not None:
+            start_time = first_epoch_time + timedelta(seconds=start_delay)
+            if time is not None:
+                potential_end = start_time + timedelta(seconds=time)
+                end_time = min(potential_end, last_epoch_time) if stop_delay is None else \
+                    min(potential_end, last_epoch_time - timedelta(seconds=stop_delay))
+            elif stop_delay is not None:
+                end_time = last_epoch_time - timedelta(seconds=stop_delay)
+        elif stop_delay is not None:
+            end_time = last_epoch_time - timedelta(seconds=stop_delay)
+
+        # Основной парсинг данных
+        for line in lines:
+            if line.startswith('>'):
+                parts = line[1:].split()
+                hh, mm, ss = map(float, parts[3:6])
+                current_time_str = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
+                current_time = datetime.strptime(current_time_str, "%H:%M:%S.%f")
+
+                # Проверяем, нужно ли обрабатывать эту эпоху
+                process_epoch = True
+                if start_time and current_time < start_time:
+                    process_epoch = False
+                if end_time and current_time > end_time:
+                    process_epoch = False
+
+                if not process_epoch:
+                    current_time = None
+                    continue
+
+                current_time = current_time_str
+
+            elif current_time and line.strip():
+                sat = line[:3].strip()
+                obs = line[3:]
+
+                try:
+                    s1 = float(obs[32:48].strip())  # L1 SNR
+                    self.data[current_time][f"{sat}_L1"] = s1
+                except ValueError:
+                    pass
+
+                try:
+                    s2 = float(obs[80:96].strip())  # L2 SNR
+                    self.data[current_time][f"{sat}_L2"] = s2
+                except ValueError:
+                    pass
 
     def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=None):
         if target_system and target_band:
@@ -232,7 +265,7 @@ class RinexParser:
 
                 base_name = os.path.splitext(os.path.basename(self.filename))[0]
                 plot_file = os.path.join(output_dir, f"{sys_name}_{band}_SNR.png")
-                plt.savefig(plot_file, dpi=200)
+                plt.savefig(plot_file, dpi=150)
                 if args.plot:
                     plt.show()
                 plt.close()
@@ -256,6 +289,9 @@ def main():
     parser.add_argument('--archive', action='store_true', help="Нужно ли архивировать папку")
     parser.add_argument('--plot', action='store_true', help="Флаг для указания, нужно ли строить график")
     parser.add_argument('--start_delay', type=int, help="Время задержки начала обработки, сек", default=None)
+    parser.add_argument('--stop_delay', type=int, help="Время задержки конца обработки, сек", default=None)
+    parser.add_argument('--time', type=int, help="Время продолжительности обработки, сек", default=None)
+
 
     
     return parser.parse_args()
@@ -290,7 +326,7 @@ if __name__ == "__main__":
         os.remove(txt2_file_path)
 
     parser = RinexParser(obs_file)
-    parser.parse(args.start_delay)    
+    parser.parse(args.start_delay, args.stop_delay, args.time)
     parser.check_conditions(args.min_snr, args.min_sats, args.system, args.band, int_name_file)
     parser.calculate_average_snr(int_name_file)
     parser.plot_snr(int_name_file, target_system=args.system, target_band=args.band)
