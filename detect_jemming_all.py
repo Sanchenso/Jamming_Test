@@ -3,19 +3,34 @@ import subprocess
 import sys
 
 files = os.listdir()
-min_snr = sys.argv[1]
-min_sats = sys.argv[2]
-target_system = sys.argv[3] if len(sys.argv) > 3 else ""
-target_band = sys.argv[4] if len(sys.argv) > 4 else ""
+
+snr_GPS_L1 = 30
+nSat_GPS_L1 = 5
+snr_Glonass_L1 = 30
+nSat_Glonass_L1 = 5
+snr_BeiDou_L1 = 30
+nSat_BeiDou_L1 = 5
+
+snr_GPS_L2 = 30
+nSat_GPS_L2 = 5
+snr_Glonass_L2 = 30
+nSat_Glonass_L2 = 5
+snr_BeiDou_L2 = 30
+nSat_BeiDou_L2 = 5
 
 for i in files:
     if i.endswith(('.dat', '.ubx', '.log', '.cyno')):
         print(i)
-
-        command = f"python3 detect_jamming_test.py {i} {min_snr} {min_sats}"
-        if target_system:
-            command += f" {target_system}"
-        if target_band:
-            command += f" {target_band}"
-
+        command = f"python3 detect_jamming_test.py {i} 30 5 --system GPS --band L1 --start_delay 60 --time 120"
         subprocess.call(command, shell=True)
+        command = f"python3 detect_jamming_test.py {i} 30 5 --system GPS --band L2 --start_delay 60 --time 120"
+        subprocess.call(command, shell=True)
+        command = f"python3 detect_jamming_test.py {i} 30 5 --system BeiDou --band L1 --start_delay 60 --time 120"
+        subprocess.call(command, shell=True)
+        command = f"python3 detect_jamming_test.py {i} 30 5 --system BeiDou --band L2 --start_delay 60 --time 120"
+        subprocess.call(command, shell=True)
+        command = f"python3 detect_jamming_test.py {i} 30 5 --system Glonass --band L1 --start_delay 60 --time 120"
+        subprocess.call(command, shell=True)
+        command = f"python3 detect_jamming_test.py {i} 30 5 --system Glonass --band L2  --start_delay 60 --time 120 --folder --archive"
+        subprocess.call(command, shell=True)
+

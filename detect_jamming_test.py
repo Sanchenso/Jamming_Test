@@ -22,79 +22,82 @@ class RinexParser:
         self.systems = {'G': 'GPS', 'R': 'GLONASS', 'C': 'BeiDou'}
 
     def parse(self, start_delay=None, stop_delay=None, time=None):
+        def parse_time(hh, mm, ss):
+            """Вспомогательная функция для обработки времени с коррекцией секунд>59"""
+            ss_whole = int(ss)
+            ss_frac = ss - ss_whole
+            mm += ss_whole // 60
+            ss_whole %= 60
+            hh += mm // 60
+            mm %= 60
+            return f"{int(hh):02d}:{int(mm):02d}:{ss_whole:02d}.{int(ss_frac*100):02d}"
+
         with open(self.filename, 'r') as f:
             lines = f.readlines()
 
         # Skip header
-        for i, line in enumerate(lines):
-            if "END OF HEADER" in line:
-                lines = lines[i + 1:]
-                break
+        lines = lines[next(i for i, line in enumerate(lines) if "END OF HEADER" in line) + 1:]
 
-        current_time = None
-        start_time = None
-        end_time = None
-        first_epoch_time = None
-        last_epoch_time = None
+        # Initialize time boundaries
+        first_epoch = last_epoch = None
+        current_time = start_time = end_time = None
 
-        # Сначала проходим по файлу, чтобы определить первый и последний временные метки
+        # First pass - find time boundaries
         for line in lines:
             if line.startswith('>'):
                 parts = line[1:].split()
                 hh, mm, ss = map(float, parts[3:6])
-                time_str = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
-                if first_epoch_time is None:
-                    first_epoch_time = datetime.strptime(time_str, "%H:%M:%S.%f")
-                last_epoch_time = datetime.strptime(time_str, "%H:%M:%S.%f")
+                time_str = parse_time(hh, mm, ss)
+                dt = datetime.strptime(time_str, "%H:%M:%S.%f")
+                if first_epoch is None:
+                    first_epoch = dt
+                last_epoch = dt
 
-        # Устанавливаем границы обработки
+        # Set processing window
         if start_delay is not None:
-            start_time = first_epoch_time + timedelta(seconds=start_delay)
+            start_time = first_epoch + timedelta(seconds=start_delay)
             if time is not None:
-                potential_end = start_time + timedelta(seconds=time)
-                end_time = min(potential_end, last_epoch_time) if stop_delay is None else \
-                    min(potential_end, last_epoch_time - timedelta(seconds=stop_delay))
+                end_time = start_time + timedelta(seconds=time)
+                if stop_delay is not None:
+                    end_time = min(end_time, last_epoch - timedelta(seconds=stop_delay))
             elif stop_delay is not None:
-                end_time = last_epoch_time - timedelta(seconds=stop_delay)
+                end_time = last_epoch - timedelta(seconds=stop_delay)
         elif stop_delay is not None:
-            end_time = last_epoch_time - timedelta(seconds=stop_delay)
+            end_time = last_epoch - timedelta(seconds=stop_delay)
 
-        # Основной парсинг данных
+        # Main parsing loop
         for line in lines:
             if line.startswith('>'):
                 parts = line[1:].split()
                 hh, mm, ss = map(float, parts[3:6])
-                current_time_str = f"{int(hh):02d}:{int(mm):02d}:{ss:05.2f}"
-                current_time = datetime.strptime(current_time_str, "%H:%M:%S.%f")
-
-                # Проверяем, нужно ли обрабатывать эту эпоху
-                process_epoch = True
-                if start_time and current_time < start_time:
-                    process_epoch = False
-                if end_time and current_time > end_time:
-                    process_epoch = False
-
-                if not process_epoch:
+                current_time_str = parse_time(hh, mm, ss)
+                current_dt = datetime.strptime(current_time_str, "%H:%M:%S.%f")
+                
+                # Skip if outside processing window
+                if ((start_time and current_dt < start_time) or 
+                    (end_time and current_dt > end_time)):
                     current_time = None
                     continue
-
+                    
                 current_time = current_time_str
 
             elif current_time and line.strip():
                 sat = line[:3].strip()
                 obs = line[3:]
-
-                try:
-                    s1 = float(obs[32:48].strip())  # L1 SNR
-                    self.data[current_time][f"{sat}_L1"] = s1
-                except ValueError:
-                    pass
-
-                try:
-                    s2 = float(obs[80:96].strip())  # L2 SNR
-                    self.data[current_time][f"{sat}_L2"] = s2
-                except ValueError:
-                    pass
+                
+                # Parse SNR values with error handling
+                snr_values = {
+                    '_L1': (32, 48),
+                    '_L2': (80, 96)
+                }
+                
+                for band, (start, end) in snr_values.items():
+                    try:
+                        snr = float(obs[start:end].strip())
+                        if snr > 0:  # Skip invalid/zero values
+                            self.data[current_time][f"{sat}{band}"] = snr
+                    except ValueError:
+                        continue
 
     def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=None):
         if target_system and target_band:
@@ -133,10 +136,10 @@ class RinexParser:
                             if sat_key.startswith(sys_code)
                             and sat_key.endswith(band)
                             and sats[sat_key] >= min_snr)
-
                 if count < min_sats:
                     print(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})")
-                    txt_file_path = os.path.join(output_dir, f'{os.path.splitext(os.path.basename(self.filename))[0]}.txt')
+                    txt_file_path = os.path.join(output_dir, f'{os.path.splitext(os.path.basename(self.filename))[0]}_{system_name}.txt')
+                    
                     with open(txt_file_path, 'a', encoding='utf-8') as file:
                         file.write(f"WARNING at {time} for {system_name}: {count} satellites (need {min_sats})\n")
                     problems += 1
@@ -291,6 +294,7 @@ def main():
     parser.add_argument('--start_delay', type=int, help="Время задержки начала обработки, сек", default=None)
     parser.add_argument('--stop_delay', type=int, help="Время задержки конца обработки, сек", default=None)
     parser.add_argument('--time', type=int, help="Время продолжительности обработки, сек", default=None)
+    parser.add_argument('--folder', action='store_true', help="Нужно перемещать лог в отдельную папку", default=None)
 
 
     
@@ -311,19 +315,17 @@ if __name__ == "__main__":
     is_windows = os.name == 'nt'
     convbin_command = "convbin.exe" if is_windows else "convbin"
     
-    subprocess.call(f"{convbin_command} {args.name_file} -o {obs_file} -os -r ubx", shell=True)
     if not os.path.exists(obs_file):
-        subprocess.call(f"{convbin_command} {args.name_file} -o {obs_file} -os -r rtcm3", shell=True)
+        subprocess.call(f"{convbin_command} {args.name_file} -o {obs_file} -os -r ubx", shell=True)
+        if not os.path.exists(obs_file):
+            subprocess.call(f"{convbin_command} {args.name_file} -o {obs_file} -os -r rtcm3", shell=True)
 
     os.makedirs(int_name_file, exist_ok=True)
 
     # Clear existing txt file
-    txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt')
-    txt2_file_path = os.path.join(int_name_file, f'{int_name_file}_average_snr.txt')
-    if os.path.exists(txt_file_path):
-        os.remove(txt_file_path)
-    if os.path.exists(txt2_file_path):
-        os.remove(txt2_file_path)
+    #txt_file_path = os.path.join(int_name_file, f'{int_name_file}.txt')
+    #if os.path.exists(txt_file_path):
+    #    os.remove(txt_file_path)
 
     parser = RinexParser(obs_file)
     parser.parse(args.start_delay, args.stop_delay, args.time)
@@ -332,7 +334,7 @@ if __name__ == "__main__":
     parser.plot_snr(int_name_file, target_system=args.system, target_band=args.band)
     
     # Clear obs file
-    if os.path.exists(obs_file):
+    if os.path.exists(obs_file) and args.folder:
         os.remove(obs_file)
         shutil.move(args.name_file, int_name_file)
         
