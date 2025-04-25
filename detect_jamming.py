@@ -53,11 +53,11 @@ class RinexParser:
                     first_epoch = dt
                 last_epoch = dt
 
-        # Set processing window
         if start_delay is not None:
             start_time = first_epoch + timedelta(seconds=start_delay)
             if time is not None:
-                end_time = start_time + timedelta(seconds=time)
+                effective_time = min(time, (last_epoch - start_time).total_seconds())
+                end_time = start_time + timedelta(seconds=effective_time)
                 if stop_delay is not None:
                     end_time = min(end_time, last_epoch - timedelta(seconds=stop_delay))
             elif stop_delay is not None:
@@ -65,7 +65,6 @@ class RinexParser:
         elif stop_delay is not None:
             end_time = last_epoch - timedelta(seconds=stop_delay)
 
-        # Main parsing loop
         for line in lines:
             if line.startswith('>'):
                 parts = line[1:].split()
