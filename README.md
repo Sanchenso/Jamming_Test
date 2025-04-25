@@ -38,7 +38,7 @@ Log is cut off from the beginning to 30 seconds and at the end to 30 seconds:
 Log is cut off from the beginning to 30 seconds and duration is 30 from the of cutting :
 ```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --archive --start_delay 30 --time 30```
 
-## Detect detect_jamming_all.py
+## detect_jamming_all.py - processing with a single command
 example of usage:
 ```python3 detect_jamming_all.py```
 
