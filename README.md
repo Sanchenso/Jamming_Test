@@ -12,12 +12,13 @@ Optional Arguments:
 
 - --system - name of the system (e.g., GPS).
 - --band - band identifier of the system (e.g., L1).
-- --archive - if specified, archives the folder.
+- --archive - if specified, archives the folder (use with folder)
+- --folder - if need to repalce log in folder
 - --plot - if specified, shows the plot.
 - --start_delay - delay time for start of processing, sec (e.g., 30)
 - --stop_delay  - delay time for stop of processing, sec (e.g., 30)
 - --time - time of processing, onsidering start and stop delay, sec (e.g., 30)
-- --folder - if need to repalce log in folder
+
 
 Functionality:
 
@@ -36,7 +37,7 @@ Log is cut off from the beginning to 30 seconds and at the end to 30 seconds:
 ```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --folder --archive --start_delay 30 --stop_delay 30```
 
 Log is cut off from the beginning to 30 seconds and duration is 30 from the of cutting :
-```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --folder --archive --start_delay 30 --time 30```
+```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --start_delay 30 --time 30```
 
 ## detect_jamming_all.py - processing with a single command
 example of usage:
