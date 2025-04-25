@@ -282,7 +282,7 @@ class RinexParser:
         print(f"Directory removed: {directory_name}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Обработка файла и параметров для скрипта detect_jamming_test.py")
+    parser = argparse.ArgumentParser(description="Обработка файла и параметров для скрипта detect_jemming_test.py")
     
     parser.add_argument('name_file', type=str, help="Имя файла для обработки")
     parser.add_argument('min_snr', type=float, help="Минимальный SNR")
@@ -302,8 +302,8 @@ def main():
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python detect_jamming_test.py input_file min_snr min_sats [--system SYSTEM] [--band BAND] [--archive] [--plot] [--start_delay]")
-        print("Example: python3 detect_jamming_test.py test_tau1312.cyno 30 5")
+        print("Usage: python detect_jemming_test.py input_file min_snr min_sats [--system SYSTEM] [--band BAND] [--archive] [--plot] [--start_delay]")
+        print("Example: python3 detect_jemming_test.py test_tau1312.cyno 30 5")
         sys.exit(1)
     
     # Parse arguments
