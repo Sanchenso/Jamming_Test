@@ -33,7 +33,7 @@ For *log test_NEO_M8.ubx*, a minimum of 5 satellites (either GPS or GLONASS) wit
 
 To specify only one system, for example, GPS L1, and to show the plot and archive. 
 Log is cut off from the beginning to 30 seconds and at the end to 30 seconds:
-```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --archive --start_delay 30 --stop_delay 30```
+```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --folder --archive --start_delay 30 --stop_delay 30```
 
 Log is cut off from the beginning to 30 seconds and duration is 30 from the of cutting :
 ```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --folder --archive --start_delay 30 --time 30```
