@@ -39,9 +39,9 @@ Log is cut off from the beginning to 30 seconds and at the end to 30 seconds:
 Log is cut off from the beginning to 30 seconds and duration is 30 from the of cutting :
 ```python3 detect_jamming_test.py test_NEO_M8.ubx 30 5 --system GPS --band L1 --plot --start_delay 30 --time 30```
 
-## detect_jamming_all.py - processing with a single command
+## detect_jamming_all.py - processing with a single command on Windows
 example of usage:
-```python3 detect_jamming_all.py```
+```python detect_jamming_all.py```
 
 
 Put this script in the directory with detect_jamming_test.py and it will process all the files in the folder according to the specified parameters:
