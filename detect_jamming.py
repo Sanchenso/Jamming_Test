@@ -101,7 +101,7 @@ class RinexParser:
 
     def check_conditions(self, min_snr, min_sats, target_system=None, target_band=None, output_dir=None):
         if target_system and target_band:
-            sys_code = system_map.get(target_system, 'G')
+            sys_code = system_map.get(target_system)
             band = f"_{target_band}"
             systems_to_check = {
                 f"{target_system}_{target_band}": (sys_code, band)
@@ -114,7 +114,9 @@ class RinexParser:
                 'Glonass_L1': ('R', '_L1'),
                 'Glonass_L2': ('R', '_L2'),
                 'BeiDou_L1': ('C', '_L1'),
-                'BeiDou_L2': ('C', '_L2')
+                'BeiDou_L2': ('C', '_L2'),
+                'Galileo_L1': ('E', '_L1'),
+                'Galileo_L2': ('E', '_L2'),
             }
             print(f"\nChecking conditions: SNR ≥ {min_snr}, min {min_sats} satellites for all systems/bands")
 
