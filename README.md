@@ -12,8 +12,8 @@ Optional Arguments:
 
 - --system - name of the system (e.g., GPS).
 - --band - band identifier of the system (e.g., L1).
-- --archive - if specified, archives the folder (use with folder)
 - --folder - if need to repalce log in folder
+- --archive - if specified, archives the folder (use with folder)
 - --plot - if specified, shows the plot.
 - --start_delay - delay time for start of processing, sec (e.g., 30)
 - --stop_delay  - delay time for stop of processing, sec (e.g., 30)
